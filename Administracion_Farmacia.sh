@@ -142,19 +142,80 @@ function menu_seguridad() {
   echo "1. Nmap"
   echo "2. Wireshark"
   read -p "Seleccione herramienta: " tipo
+
   case $tipo in
     1)
-      read -p "IP objetivo: " ip
-      nmap -sS -Pn "$ip"
+      read -p "IP o red objetivo (ej. 192.168.1.0/24): " objetivo
+      read -p "¿Desea detección de versiones? (s/n): " version_flag
+      read -p "¿Desea escanear un puerto específico? (s/n): " puerto_flag
+
+      opciones="-sS -Pn"
+      [[ "$version_flag" =~ ^[sS]$ ]] && opciones+=" -sV"
+      if [[ "$puerto_flag" =~ ^[sS]$ ]]; then
+        read -p "Puerto a escanear (ej. 22): " puerto
+        opciones+=" -p $puerto"
+      fi
+
+      read -p "¿Desea guardar los resultados? (s/n): " guardar
+      if [[ "$guardar" =~ ^[sS]$ ]]; then
+        read -p "Nombre del archivo de salida (sin extensión): " nombre
+        archivo="/tmp/${nombre}_nmap.txt"
+        comando="nmap $opciones $objetivo > $archivo && echo 'Resultados guardados en $archivo'"
+      else
+        comando="nmap $opciones $objetivo"
+      fi
+read -p "¿Desea programar el escaneo? (s/n): " programar
+      if [[ "$programar" =~ ^[sS]$ ]]; then
+        read -p "¿Será un escaneo recurrente? (s/n): " recurrente
+        if [[ "$recurrente" =~ ^[sS]$ ]]; then
+          echo "¿Cuándo desea que se ejecute?"
+          echo "1. Mañana (todos los días a las 8 AM)"
+          echo "2. Noche (todos los días a las 9 PM)"
+          echo "3. Personalizar (formato cron)"
+          read -p "Opción: " op_recurrente
+          case $op_recurrente in
+            1)
+              echo "0 8 * * * $comando" | crontab -l 2>/dev/null | cat - <(echo) - | crontab -
+              echo "Tarea recurrente añadida para las mañanas (8 AM)"
+              ;;
+            2)
+	echo "0 21 * * * $comando" | crontab -l 2>/dev/null | cat - <(echo) - | crontab -
+              echo "Tarea recurrente añadida para las noches (9 PM)"
+              ;;
+            3)
+              read -p "Ingrese la expresión cron (ej. 30 14 * * 1-5 para Lunes a Viernes 2:30 PM): " cron_expr
+              (crontab -l 2>/dev/null; echo "$cron_expr $comando") | crontab -
+              echo "Tarea personalizada añadida."
+              ;;
+            *) echo "Opción inválida.";;
+          esac
+        else
+          read -p "¿En cuántos minutos desea ejecutar el escaneo? (ej. 5): " minutos
+          echo "$comando" | at now + $minutos minutes
+          echo "Escaneo programado en $minutos minuto(s)."
+        fi
+      else
+        eval "$comando"
+      fi
       ;;
     2)
-      read -p "Duración (segundos): " dur
-      read -p "Interfaz (ej. eth0): " iface
-      read -p "Archivo de salida: " salida
+      echo -e "\nInterfaces disponibles:"
+tshark -D
+      echo
+      read -p "Seleccione el número de la interfaz a usar: " iface_num
+      iface=$(tshark -D | grep "^$iface_num\." | cut -d' ' -f2)
+      if [[ -z "$iface" ]]; then
+        echo "Interfaz inválida."
+        return
+      fi
+      read -p "Duración del escaneo en segundos: " dur
+      read -p "Ruta y nombre de archivo de salida (ej. /tmp/captura.pcap): " salida
       timeout "$dur" tshark -i "$iface" -w "$salida"
-      echo "Captura almacenada en $salida"
+      echo "Captura almacenada en: $salida"
       ;;
-    *) echo "Opción inválida.";;
+    *)
+      echo "Opción inválida."
+      ;;
   esac
 }
 
