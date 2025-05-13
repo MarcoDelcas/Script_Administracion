@@ -93,26 +93,110 @@ function menu_grupos() {
   done
 }
 
+ADMIN_FILE="$HOME/tareas_programadas.txt"
+
 function menu_tareas() {
-  echo -e "\n${blueColour}--- Programación de Tareas ---${endColour}"
-  echo "1. Cron"
-  echo "2. At"
-  read -p "Seleccione el método de programación: " tipo
-  case $tipo in
-    1)
-      read -p "Comando a programar: " cmd
-      read -p "Minuto (0-59): " min
-      read -p "Hora (0-23): " hora
-      echo "$min $hora * * * $cmd" >> /etc/crontab
-      echo "Tarea añadida a cron."
-      ;;
-    2)
-      read -p "Comando a ejecutar con at: " cmd
-      read -p "Hora (por ejemplo, 10:00 AM): " hora
-      echo "$cmd" | at "$hora"
-      ;;
-    *) echo "Opción inválida.";;
-  esac
+    # Función para convertir formato 12h a 24h
+    formato_24h() {
+        hora12=$(echo "$1" | awk '{print tolower($0)}')
+        hora=$(echo "$hora12" | cut -d':' -f1)
+        minuto=$(echo "$hora12" | cut -d':' -f2 | sed 's/[^0-9]*//g')
+        meridiano=$(echo "$hora12" | grep -o 'am\|pm')
+
+        if [[ "$meridiano" == "pm" && "$hora" -ne 12 ]]; then
+            hora=$((hora + 12))
+        elif [[ "$meridiano" == "am" && "$hora" -eq 12 ]]; then
+            hora=0
+        fi
+        printf "%02d %02d" "$hora" "$minuto"
+    }
+
+    # Función para programar tarea con cron
+    programar_cron() {
+        read -p "Hora (hh:mm am/pm): " hora_input
+        read -p "Intervalo adicional (día/mes/día_semana, por ejemplo: * * *): " intervalo
+        read -p "Ruta al script a ejecutar: " ruta
+
+        read hora minuto <<< $(formato_24h "$hora_input")
+
+        (crontab -l 2>/dev/null; echo "$minuto $hora $intervalo bash $ruta") | crontab -
+
+        echo "Ubicación: $ruta | Tipo: cron | Próxima ejecución: $minuto $hora $intervalo" >> "$ADMIN_FILE"
+        echo "Tarea programada con cron."
+    }
+
+    # Función para programar tarea con at
+    programar_at() {
+        read -p "Hora (hh:mm am/pm): " hora_input
+        read -p "Ruta al script a ejecutar: " ruta
+
+        echo "bash $ruta" | at "$hora_input"
+
+        echo "Ubicación: $ruta | Tipo: at | Próxima ejecución: $hora_input" >> "$ADMIN_FILE"
+        echo "Tarea programada con at."
+    }
+
+    # Función para ver tareas registradas
+    ver_tareas() {
+        echo -e "\n${purpleColour}--- Tareas Registradas ---${endColour}"
+        if [[ -f "$ADMIN_FILE" ]]; then
+            nl -w2 -s". " "$ADMIN_FILE"
+        else
+            echo "No hay tareas registradas."
+        fi
+    }
+
+    # Función para eliminar una entrada del archivo de registro
+    eliminar_tarea() {
+        ver_tareas
+        echo
+        read -p "Número de tarea a eliminar del registro: " num
+        if [[ -f "$ADMIN_FILE" ]]; then
+            total=$(wc -l < "$ADMIN_FILE")
+            if (( num >= 1 && num <= total )); then
+                sed -i "${num}d" "$ADMIN_FILE"
+                echo "Tarea eliminada del registro (no se elimina de crontab ni at automáticamente)."
+            else
+                echo "Número inválido."
+            fi
+        else
+            echo "No hay tareas registradas."
+        fi
+    }
+
+    # Submenú de administración de tareas
+    administrar_tareas() {
+        echo -e "\n${turquoiseColour}--- Administrar Tareas ---${endColour}"
+        echo "1) Ver tareas registradas"
+        echo "2) Eliminar tarea del registro"
+        echo "3) Volver al menú anterior"
+        read -p "Opción: " adm_op
+
+        case $adm_op in
+            1) ver_tareas ;;
+            2) eliminar_tarea ;;
+            3) return ;;
+            *) echo "Opción inválida." ;;
+        esac
+    }
+
+    # Bucle del menú de tareas
+    while true; do
+        echo -e "\n${blueColour}--- Programación de Tareas ---${endColour}"
+        echo "1) Programar tarea con cron"
+        echo "2) Programar tarea con at"
+        echo "3) Administrar tareas registradas"
+        echo "4) Volver al menú principal"
+        read -p "Seleccione una opción: " opcion
+
+        case $opcion in
+            1) programar_cron ;;
+            2) programar_at ;;
+            3) administrar_tareas ;;
+            4) break ;;
+            *) echo "Opción inválida." ;;
+        esac
+    done
 }
 
 function menu_respaldo() {
